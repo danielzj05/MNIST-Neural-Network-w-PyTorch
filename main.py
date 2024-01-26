@@ -71,7 +71,7 @@ class Net(nn.Module):
         # *note that the probability is 0, meaning that the formula above isnt actually used?
         # note that because dropout occurs during training and not during interference time (actual utilisation)
 
-        self.fc1 = nn.Linear(320, 50)
+        self.fc1 = nn.Linear(360, 50)
         # applies the linear transformation y = xA^T + B; fully connected layer *note you can use print(x.shape) to adapt the number of neurons in the linear layer (https://datascience.stackexchange.com/questions/47328/how-to-choose-the-number-of-output-channels-in-a-convolutional-layer)
         # will be used to classify the image into its label; reduces the number of layers
         # the input (320) must be equal to the size of the resulting tensor after the convolutions; the n-dimensional tensors are flattened to be classified (see Patrick Loeber pytorch tut.14)
@@ -91,7 +91,7 @@ class Net(nn.Module):
         # new kernel size is 2x2; tensors are shrinking
 
         x = f.relu(f.max_pool2d(self.conv2_drop(x), 2))
-        x = x.view(-1, 320)
+        x = x.view(-1, 360)
         # different shape, same data as self; the -1 indicates for pytorch to calculate the number of rows for the tensor, while the columns remain specified: https://stackoverflow.com/questions/42479902/what-does-view-do-in-pytorch
         # essentially we are creating a tensor that can be flattened out later (i think)
 
@@ -165,9 +165,9 @@ def test():
             # i think it returns a tensore with the same dimension as the input but returns 1 max value for a prediction?
             correct += pred.eq(target.data.view_as(pred)).sum()
             #
-            testLoss /= len(testLoader.dataset)
-            testLosses.append(testLoss)
-            print('\nTest set: Avg. loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(testLoss, correct, len(testLoader.dataset), 100. * correct / len(testLoader.dataset)))
+    testLoss /= len(testLoader.dataset)
+    testLosses.append(testLoss)
+    print('\nTest set: Avg. loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(testLoss, correct, len(testLoader.dataset), 100. * correct / len(testLoader.dataset)))
 
 
 # testing
