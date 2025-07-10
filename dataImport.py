@@ -75,7 +75,7 @@ class Net(nn.Module):
         # *note that the probability is 0, meaning that the formula above isnt actually used?
         # note that because dropout occurs during training and not during interference time (actual utilisation)
 
-        self.fc1 = nn.Linear(320, 50)
+        self.fc1 = nn.Linear(360, 50)
         # applies the linear transformation y = xA^T + B; fully connected layer *note you can use print(x.shape) to adapt the number of neurons in the linear layer (https://datascience.stackexchange.com/questions/47328/how-to-choose-the-number-of-output-channels-in-a-convolutional-layer)
         # will be used to classify the image into its label; reduces the number of layers
         # the input (320) must be equal to the size of the resulting tensor after the convolutions; the n-dimensional tensors are flattened to be classified (see Patrick Loeber pytorch tut.14)

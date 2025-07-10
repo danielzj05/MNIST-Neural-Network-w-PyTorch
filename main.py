@@ -1,3 +1,4 @@
+import os
 import torch
 import torchvision
 # data set https://pytorch.org/vision/stable/generated/torchvision.datasets.MNIST.html#torchvision.datasets.MNIST
@@ -30,7 +31,7 @@ torch.manual_seed(randomSeed)
 
 # using torchvision to crop and normalize data; also downloads mnist data?
 # https://pytorch.org/docs/stable/data.html
-trainLoader = torch.utils.data.DataLoader(torchvision.datasets.MNIST('/files/', train=True, download=True, transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), torchvision.transforms.Normalize(0.1307, 0.3081)])), batch_size=batchSizeTest, shuffle=True)
+trainLoader = torch.utils.data.DataLoader(torchvision.datasets.MNIST('/files/', train=True, download=True, transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), torchvision.transforms.Normalize(0.1307, 0.3081)])), batch_size=batchSizeTrain, shuffle=True)
 # normalizing values improves the model's ability to recognize data; normalizing tensor by adding normalized values?, idk if data parallelism is used but if so each worker is being trained by batch size. note shuffle allows the trainer to feed different samples into the training loop
 # data loader is a python iterable over a data set; can be looped
 
@@ -74,7 +75,7 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(360, 50)
         # applies the linear transformation y = xA^T + B; fully connected layer *note you can use print(x.shape) to adapt the number of neurons in the linear layer (https://datascience.stackexchange.com/questions/47328/how-to-choose-the-number-of-output-channels-in-a-convolutional-layer)
         # will be used to classify the image into its label; reduces the number of layers
-        # the input (320) must be equal to the size of the resulting tensor after the convolutions; the n-dimensional tensors are flattened to be classified (see Patrick Loeber pytorch tut.14)
+        # the input (360) must be equal to the size of the resulting tensor after the convolutions; the n-dimensional tensors are flattened to be classified (see Patrick Loeber pytorch tut.14)
         # output layers can be chosen at will
 
         self.fc2 = nn.Linear(50, 10)
@@ -91,7 +92,7 @@ class Net(nn.Module):
         # new kernel size is 2x2; tensors are shrinking
 
         x = f.relu(f.max_pool2d(self.conv2_drop(x), 2))
-        x = x.view(-1, 360)
+        x = x.view(x.size(0), -1)  # Dynamically calculate flattening size
         # different shape, same data as self; the -1 indicates for pytorch to calculate the number of rows for the tensor, while the columns remain specified: https://stackoverflow.com/questions/42479902/what-does-view-do-in-pytorch
         # essentially we are creating a tensor that can be flattened out later (i think)
 
@@ -109,6 +110,10 @@ class Net(nn.Module):
         # converts a vector of numbers into a probability distribution; log is used because it has better numerical stability and is less prone to under/overflow errors
 
 
+# Ensure results directory exists
+results_dir = '/results/'
+os.makedirs(results_dir, exist_ok=True)
+
 # initializing the network and optimizer
 network = Net()
 optimizer = optim.SGD(network.parameters(), lr=learningRate, momentum=momentum)
@@ -124,50 +129,39 @@ testCounter = [i*len(trainLoader.dataset) for i in range(n_epochs + 1)]
 def train(epoch):
     network.train()
     for batch_idx, (data, target) in enumerate(trainLoader):
+        print(f"Train - Data shape: {data.shape}, Target shape: {target.shape}")  # Debugging batch size
         optimizer.zero_grad()
-        # sets gradients to NONE or zeros; can improve performance and ultimately improves the training of the model
         output = network(data)
         loss = f.nll_loss(output, target)
-        # loss function; calculates and "scores" the difference between the output and the ground truth label
-        # this loss function is used only on models with the softmax function as an output activation layer
-        # when NLL is minimized, output improves; the logarithm punishes the model for making the correct prediction with smaller probabilities and encouraged for making the prediction with
-        # higher probabilities
-
         loss.backward()
-        # collects new gradients (weights and biases) to propagate back into the nn
         optimizer.step()
-        # values are placed back into the network parameters using this
 
         if batch_idx % logInterval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(epoch, batch_idx * len(data), len(trainLoader.dataset), 100. * batch_idx / len(trainLoader), loss.item()))
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(trainLoader.dataset),
+                100. * batch_idx / len(trainLoader), loss.item()))
             trainLosses.append(loss.item())
-            # item() extracts the loss's value as a Python float
-            trainCounter.append((batch_idx*64) + ((epoch-1)*len(trainLoader.dataset)))
-            torch.save(network.state_dict(), '/results/model.pth')
-            torch.save(optimizer.state_dict(), '/results/optimizer.pth')
-            # state_dict() maps each layer to its parameter tensor
-            # torch.save saves the network after each iteration
-            # note: to access previous states, you can use .load_state_dict(state_dict)
+            trainCounter.append((batch_idx * batchSizeTrain) + ((epoch - 1) * len(trainLoader.dataset)))
+            torch.save(network.state_dict(), os.path.join(results_dir, 'model.pth'))
+            torch.save(optimizer.state_dict(), os.path.join(results_dir, 'optimizer.pth'))
 
 
 def test():
     network.eval()
-    # evaluates layers; is a switch for specific layers that behave differently during training and interference time
-    # i.e. dropout and normalization layers need to be turned off during model evaluation, and .eval does it automatically
     testLoss = 0
     correct = 0
     with torch.no_grad():
-        # neat - 'with' allows proper acquisition and release of resources
         for data, target in testLoader:
+            print(f"Test - Data shape: {data.shape}, Target shape: {target.shape}")  # Debugging batch size
             output = network(data)
-            testLoss += f.nll_loss(output, target, size_average=False).item()
+            testLoss += f.nll_loss(output, target, reduction='sum').item()
             pred = output.data.max(1, keepdim=True)[1]
-            # i think it returns a tensore with the same dimension as the input but returns 1 max value for a prediction?
             correct += pred.eq(target.data.view_as(pred)).sum()
-            #
     testLoss /= len(testLoader.dataset)
     testLosses.append(testLoss)
-    print('\nTest set: Avg. loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(testLoss, correct, len(testLoader.dataset), 100. * correct / len(testLoader.dataset)))
+    print('\nTest set: Avg. loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        testLoss, correct, len(testLoader.dataset),
+        100. * correct / len(testLoader.dataset)))
 
 
 # testing
